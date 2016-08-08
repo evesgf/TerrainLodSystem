@@ -1,0 +1,46 @@
+# =============== #
+# Unity generated #
+# =============== #
+[Tt]emp/
+[Oo]bj/
+[Bb]uild
+[Ll]ibrary/
+sysinfo.txt
+Builds/*
+ 
+# ===================================== #
+# Visual Studio / MonoDevelop generated #
+# ===================================== #
+.vs/
+[Ee]xported[Oo]bj/
+/Client/*.userprefs
+/Client/*.csproj
+/Client/*.pidb
+/Client/*.suo
+/Client/*.sln*
+/Client/*.user
+/Client/*.unityproj
+/Client/*.booproj
+ 
+# ============ #
+# OS generated #
+# ============ #
+.DS_Store*
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+*[Tt]humbs.db*
+
+# ====== #
+# Others #
+# ====== #
+/Client/[Bb]in/
+/Client/[Aa]ssets/[Cc]ommon/
+/Client/[Aa]ssets/[Pp]acks/
+/Client/[Aa]ssets/[Tt]emp/
+/Client/[Aa]ssets/[Tt]emp.meta
+/Client/output
+/Client/Assets/SpacePack
+/Client/Assets/CommonPack
+/Client/Assets/LarkFramework
