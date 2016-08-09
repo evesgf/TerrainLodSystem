@@ -1,26 +1,26 @@
 ﻿using UnityEngine;
 using System.Collections;
-using System.Collections.Generic;
 
-public class TerrainLodCtrl : MonoBehaviour {
-
-    public Transform playerTransform;
-    public float[] lodLevel;
+public class TerrainLod : MonoBehaviour {
 
     public GameObject Root;
-
-    public float updateLodFPS;
-
     public GameObject newCube;
+    public int tagDepth;
 
-    private int nowLevel;
-    private List<Vector3> nowPosList;
+    public class quadTree_t
+    {
+        //根节点
+        public QuadNode root;
+        //层级深度
+        public int depth;
+    }
 
-
-    ///  UL 1 | UR 0
-    ///  -----------
-    ///  LL 2 | LR 3
-    #region QuadTreeBase
+    public class QuadNode
+    {
+        //节点所代表的矩形区域
+        public MapRect Box;
+        public QuadNode[] children;
+    }
 
     public enum QuadrantEnum
     {
@@ -30,7 +30,7 @@ public class TerrainLodCtrl : MonoBehaviour {
         LR = 3
     }
 
-    public struct MapRect
+    public class MapRect
     {
         public Vector3 centerPos;
         public float length;
@@ -41,108 +41,66 @@ public class TerrainLodCtrl : MonoBehaviour {
         public Vector3 posLR;
     }
 
-    public struct SHPMBRInfo
-    {
-        //空间对象ID号
-        public int nID;
-        //空间对象MBR范围坐标
-        public MapRect Box;
-    }
-
-    public struct QuadNode
-    {
-        //节点所代表的矩形区域
-        public MapRect Box;
-        //节点所包含的所有空间对象个数
-        public int nShpCount;
-        //空间对象数组
-        public SHPMBRInfo[] pShapObj;
-        //子节点个数
-        public int nChildCount;
-        //指向节点的四个子对象
-        public QuadNode[] children;
-    }
-    public struct quadTree_t
-    {
-        //根节点
-        public QuadNode root;
-        //层级深度
-        public int depth;
-    }
-
-    #endregion
-
-    public quadTree_t quad;
-
     // Use this for initialization
     void Start () {
-        //计算四叉树
-        quad = CalculateQuad();
-
-        ShowQuad(new QuadNode[] { quad.root },4,0);
-
-        //开始更新Lod
-        //StartCoroutine(UpdateLod());
+        var tree = CreateQuadTree();
+        ShowQuad(tree);
     }
 
-    private void ShowQuad(QuadNode[] nodes,int tagDepth,int nowDepth)
+    private void ShowQuad(quadTree_t tree)
     {
-        if (nodes != null)
-        {
-            if (tagDepth == nowDepth) return;
+        InstanceCube(tree.root.children,0,4);
+    }
 
+    private void InstanceCube(QuadNode[] nodes, float nowDepth, float tagDepth)
+    {
+        if (nowDepth < tagDepth)
+        {
             for (int i = 0; i < nodes.Length; i++)
             {
-                Instantiate(newCube, nodes[i].Box.centerPos, new Quaternion(1, 1, 1, 1));
-                ShowQuad(nodes[i].children, tagDepth, nowDepth + 1);
+                var temp=(GameObject)Instantiate(newCube, nodes[i].Box.centerPos, new Quaternion(0, 0, 0, 0));
+                temp.transform.localScale = new Vector3(nodes[i].Box.length, (1 - 0.1f * nowDepth), nodes[i].Box.width);
+
+                InstanceCube(nodes[i].children, nowDepth + 1, tagDepth);
             }
         }
 
         return;
     }
 
-    /// <summary>
-    /// 计算四叉树
-    /// </summary>
-    private quadTree_t CalculateQuad()
+    private quadTree_t CreateQuadTree()
     {
-        quadTree_t q = new quadTree_t();
-        q.depth = lodLevel.Length-1;
-
-        //根节点
+        quadTree_t tree = new quadTree_t();
+        //确定根节点的坐标和长度
         QuadNode root = new QuadNode();
-
         root.Box = CalculateNodePos(Root.transform.position, Root.transform.lossyScale.x, Root.transform.lossyScale.z);
+        tree.root = root;
+        //计算根节点的子节点
+        var temp = CalculateChildNode(root);
 
-        RecursionNode(new QuadNode[] { root }, 4, 0);
+        root.children = new QuadNode[4] { temp[0], temp[1], temp[2], temp[3] };
 
-        q.root = root;
-        return q;
+        //迭代计算
+        CreateChildNode(root,root.children, 0, tagDepth);
+
+        return tree;
     }
 
-    /// <summary>
-    /// 迭代节点坐标
-    /// </summary>
-    /// <param name="nodes"></param>
-    /// <param name="tagDepth"></param>
-    /// <param name="nowDepth"></param>
-    /// <returns></returns>
-    private QuadNode[] RecursionNode(QuadNode[] nodes,int tagDepth,int nowDepth)
+    private void CreateChildNode(QuadNode root,QuadNode[] nodes,int nowDepth,int tagDepth)
     {
-        if (tagDepth == nowDepth)
+        if (nowDepth < tagDepth)
         {
-            return nodes;
+            for (int i = 0; i < nodes.Length; i++)
+            {
+                var temp = CalculateChildNode(nodes[i]);
+
+                nodes[i].children = new QuadNode[4] { temp[0], temp[1], temp[2], temp[3] };
+
+                CreateChildNode(nodes[i],temp, nowDepth + 1, tagDepth);
+            }
         }
 
-        for (int i = 0; i < nodes.Length; i++)
-        {
-            //计算四个子节点
-            var temp = CalculateChildNode(nodes[i]);
-            nodes[i].children = new QuadNode[4] { temp[0], temp[1], temp[2], temp[3] };
-            RecursionNode(nodes[i].children, tagDepth, nowDepth + 1);
-        }
-
-        return nodes;
+        return;
     }
 
     /// <summary>
@@ -194,10 +152,10 @@ public class TerrainLodCtrl : MonoBehaviour {
         rect.length = length / 2;
         rect.width = width / 2;
 
-        switch(quadrant)
+        switch (quadrant)
         {
             case QuadrantEnum.UR:
-            rect.centerPos = new Vector3(pos.x+ length/4, pos.y, pos.z + width / 4);
+                rect.centerPos = new Vector3(pos.x + length / 4, pos.y, pos.z + width / 4);
                 break;
             case QuadrantEnum.UL:
                 rect.centerPos = new Vector3(pos.x + length / 4, pos.y, pos.z - width / 4);
@@ -223,7 +181,7 @@ public class TerrainLodCtrl : MonoBehaviour {
     /// <param name="length"></param>
     /// <param name="width"></param>
     /// <returns></returns>
-    private MapRect CalculateNodePos(Vector3 pos,float length,float width)
+    private MapRect CalculateNodePos(Vector3 pos, float length, float width)
     {
         MapRect rect = new MapRect();
         rect.centerPos = pos;
@@ -241,51 +199,4 @@ public class TerrainLodCtrl : MonoBehaviour {
         return rect;
     }
 
-    /// <summary>
-    /// 间隔指定帧数计算LOD
-    /// </summary>
-    /// <returns></returns>
-    IEnumerator UpdateLod()
-    {
-        //CalculatePos(nowPosList, CheckLevel(), nowLevel);
-
-        //获取当前应该有的层级
-
-        //确定玩家坐标对应区块，依次迭代
-
-        yield return new WaitForSeconds(updateLodFPS);
-        StartCoroutine(UpdateLod());
-    }
-
-    /// <summary>
-    /// 计算当前迭代层级
-    /// </summary>
-    /// <returns></returns>
-    private int CheckLevel()
-    {
-        var height = playerTransform.position.y - transform.position.y;
-
-        //最粗粒度
-        if (height > lodLevel[lodLevel.Length - 1])
-        {
-            return lodLevel.Length - 1;
-        }
-
-        //最细粒度
-        if (height < lodLevel[0])
-        {
-            return 0;
-        }
-
-        //计算层级
-        for(int i = 0; i < lodLevel.Length-1; i++)
-        {
-            if (lodLevel[i] < height && height < lodLevel[i + 1])
-            {
-                return i;
-            }
-        }
-
-        return 0;
-    }
 }
