@@ -1,5 +1,6 @@
 ﻿using UnityEngine;
 using System.Collections;
+using System.Collections.Generic;
 
 public class TerrainLodSystem : MonoBehaviour
 {
@@ -7,10 +8,6 @@ public class TerrainLodSystem : MonoBehaviour
     /// 地形根节点
     /// </summary>
     public GameObject Root;
-    /// <summary>
-    /// 插值实例化的地形
-    /// </summary>
-    public Terrain newTerrain;
     /// <summary>
     /// 地形层级Lod
     /// </summary>
@@ -70,7 +67,8 @@ public class TerrainLodSystem : MonoBehaviour
         // Use this for initialization
         void Start()
     {
-
+        var tree = CreateQuadTree();
+        InstanceTerrain(Root, tree.root.children,0,lodLevel.Length-1);
     }
 
     #region CreateQuad
@@ -79,22 +77,53 @@ public class TerrainLodSystem : MonoBehaviour
     /// 传入根节点和深度层级创建四叉树
     /// </summary>
     /// <param name="root"></param>
-    /// <param name="depth"></param>
     /// <returns></returns>
-    public QuadTree CreateQuadTree(GameObject root,int depth)
+    public QuadTree CreateQuadTree()
     {
         //创建根节点
         QuadNode rootNode = new QuadNode
         {
-            box=CalcuateBoxData(root.transform.position,root.transform.localScale.x,root.transform.localScale.z)
+            box=CalcuateBoxData(Root.transform.position, Root.transform.localScale.x, Root.transform.localScale.z),
         };
-        //创建四叉树
+        rootNode.children = CalcuateChildNode(rootNode);
 
-        return null;
+        //创建四叉树
+        QuadTree tree = new QuadTree
+        {
+            root = rootNode,
+            depth = lodLevel.Length - 1
+        };
+
+        //迭代计算子节点
+        CreateChildNode(tree.root.children,0,tree.depth);
+
+        return tree;
     }
 
     /// <summary>
-    /// 计算四个节点的坐标
+    /// 迭代计算子节点
+    /// </summary>
+    /// <param name="nodes"></param>
+    /// <param name="nowDepth"></param>
+    /// <param name="tagDepth"></param>
+    private void CreateChildNode(QuadNode[] nodes, int nowDepth, int tagDepth)
+    {
+        if (nowDepth < tagDepth)
+        {
+            for (int i = 0; i < nodes.Length; i++)
+            {
+                var temp = CalcuateChildNode(nodes[i]);
+                nodes[i].children = CalcuateChildNode(nodes[i]);
+
+                CreateChildNode(nodes[i].children, nowDepth + 1, tagDepth);
+            }
+        }
+
+        return;
+    }
+
+    /// <summary>
+    /// 计算四个子节点的坐标
     ///  UL 1 | UR 0
     ///  -----------
     ///  LL 2 | LR 3
@@ -102,7 +131,59 @@ public class TerrainLodSystem : MonoBehaviour
     /// <returns></returns>
     private QuadNode[] CalcuateChildNode(QuadNode node)
     {
+        var boxUR = new QuadNode
+        {
+            box= CalcuateChildNode(QuadEnum.UR,node.box.Pos,node.box.length,node.box.width)
+        };
+        var boxUL = new QuadNode
+        {
+            box = CalcuateChildNode(QuadEnum.UL, node.box.Pos, node.box.length, node.box.width)
+        };
+        var boxLL = new QuadNode
+        {
+            box = CalcuateChildNode(QuadEnum.LL, node.box.Pos, node.box.length, node.box.width)
+        };
+        var boxLR = new QuadNode
+        {
+            box = CalcuateChildNode(QuadEnum.LR, node.box.Pos, node.box.length, node.box.width)
+        };
 
+        return new QuadNode[4] { boxUR, boxUL, boxLL, boxLR };
+    }
+
+    /// <summary>
+    /// 根据父节点的坐标和长宽计算出子节点的中心，长宽
+    ///  UL 1 | UR 0
+    ///  -----------
+    ///  LL 2 | LR 3
+    /// </summary>
+    /// <param name="pos"></param>
+    /// <param name="length"></param>
+    /// <param name="width"></param>
+    /// <returns></returns>
+    private TreeainBox CalcuateChildNode(QuadEnum eQuad, Vector3 pos, float length, float width)
+    {
+        TreeainBox box = new TreeainBox();
+        box.length = length / 2;
+        box.width = width / 2;
+
+        switch (eQuad)
+        {
+            case QuadEnum.UR:
+                box.Pos = new Vector3(pos.x + length / 4, pos.y, pos.z + width / 4);
+                break;
+            case QuadEnum.UL:
+                box.Pos = new Vector3(pos.x + length / 4, pos.y, pos.z - width / 4);
+                break;
+            case QuadEnum.LL:
+                box.Pos = new Vector3(pos.x - length / 4, pos.y, pos.z - width / 4);
+                break;
+            case QuadEnum.LR:
+                box.Pos = new Vector3(pos.x - length / 4, pos.y, pos.z + width / 4);
+                break;
+        }
+
+        return box;
     }
 
     /// <summary>
@@ -129,12 +210,48 @@ public class TerrainLodSystem : MonoBehaviour
 
     #endregion
 
+    #region ShowQuad
+
+    /// <summary>
+    /// 传入节点并遍历子节点，创建地形
+    /// </summary>
+    /// <param name="nodes"></param>
+    /// <param name="nowDepth"></param>
+    /// <param name="tagDepth"></param>
+    private void InstanceTerrain(GameObject root,QuadNode[] nodes, int nowDepth, int tagDepth)
+    {
+        if (nowDepth < tagDepth)
+        {
+            for (int i = 0; i < nodes.Length; i++)
+            {
+                //var terrain=CreateTerrain(new Vector3(nodes[i].box.length,1, nodes[i].box.width), nodes[i].box.Pos);
+
+                var cube=CreateCube(new Vector3(nodes[i].box.length,1-0.1f*nowDepth, nodes[i].box.width), nodes[i].box.Pos);
+                cube.transform.SetParent(root.transform);
+                cube.name = root.name+"_"+nowDepth.ToString();
+
+                InstanceTerrain(cube,nodes[i].children, nowDepth + 1, tagDepth);
+            }
+        }
+        return;
+    }
+    #endregion
+
+    public GameObject CreateCube(Vector3 size, Vector3 pos)
+    {
+        var cube = (GameObject.CreatePrimitive(PrimitiveType.Cube));
+        cube.transform.localScale = size;
+        cube.transform.position = pos;
+
+        return cube;
+    }
+
     /// <summary>
     /// 传入大小好位置创建地形
     /// </summary>
     /// <param name="size"></param>
     /// <param name="pos"></param>
-    public void CreateTerrain(Vector3 size,Vector3 pos)
+    public GameObject CreateTerrain(Vector3 size,Vector3 pos)
     {
         TerrainData terrainData = new TerrainData();
         terrainData.heightmapResolution = 513;
@@ -144,5 +261,6 @@ public class TerrainLodSystem : MonoBehaviour
         terrainData.SetDetailResolution(32, 8);
         GameObject obj = Terrain.CreateTerrainGameObject(terrainData);
         obj.transform.position = pos;
+        return obj;
     }
 }
