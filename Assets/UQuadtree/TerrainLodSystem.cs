@@ -21,6 +21,9 @@ public class TerrainLodSystem : MonoBehaviour
     /// </summary>
     public float lodFPS=0.2f;
 
+    //当前应该有的Lod层级
+    private int nowLodLevel;
+
     ///  UL 1 | UR 0
     ///  -----------
     ///  LL 2 | LR 3
@@ -64,11 +67,32 @@ public class TerrainLodSystem : MonoBehaviour
     }
     #endregion
 
-        // Use this for initialization
-        void Start()
+    // Use this for initialization
+    void Start()
     {
         var tree = CreateQuadTree();
         InstanceTerrain(Root, tree.root.children,0,lodLevel.Length-1);
+
+        StartCoroutine(UpdateQuadLod());
+    }
+
+    public void SwitchLodLevel(bool isAdd)
+    {
+        if (isAdd)
+        {
+            if (nowLodLevel < lodLevel.Length - 1)
+            {
+                nowLodLevel++;
+            }
+        }
+        else
+        {
+            if (nowLodLevel > 0)
+            {
+                nowLodLevel--;
+            }
+        }
+        Debug.Log("LodLevel:" + nowLodLevel);
     }
 
     #region CreateQuad
@@ -228,13 +252,72 @@ public class TerrainLodSystem : MonoBehaviour
 
                 var cube=CreateCube(new Vector3(nodes[i].box.length,1-0.1f*nowDepth, nodes[i].box.width), nodes[i].box.Pos);
                 cube.transform.SetParent(root.transform);
-                cube.name = root.name+"_"+nowDepth.ToString();
+
+                cube.name = root.name + i.ToString();
 
                 InstanceTerrain(cube,nodes[i].children, nowDepth + 1, tagDepth);
             }
         }
         return;
     }
+    #endregion
+
+    #region UpdateQuad
+
+    IEnumerator UpdateQuadLod()
+    {
+        CheckQuadNode();
+
+        yield return new WaitForSeconds(lodFPS);
+        StartCoroutine(UpdateQuadLod());
+    }
+
+    /// <summary>
+    /// 检测当前所在的节点
+    /// </summary>
+    private void CheckQuadNode()
+    {
+        //创建一条向下的射线
+        Ray ray = new Ray(player.transform.position, -transform.up);
+        RaycastHit hit;
+        if (Physics.Raycast(ray, out hit, 100))
+        {
+            var pos = player.transform.position;
+            Debug.DrawLine(pos, hit.point, Color.red, 0.2f);
+
+            //检测层级是否匹配
+            if (CheckLodLevel(hit.collider.gameObject.name))
+            {
+                //操作地块切换
+                SwitchColor(hit.collider.gameObject);
+
+            }
+        }
+    }
+
+    /// <summary>
+    /// 检测地块层级，不匹配则刷新
+    /// </summary>
+    /// <param name="terrainName"></param>
+    /// <returns></returns>
+    private bool CheckLodLevel(string terrainName)
+    {
+        var nowLevel=terrainName.Length - Root.name.Length;
+        if (nowLodLevel != nowLevel)
+        {
+            var id = terrainName.Remove(0, Root.name.Length);
+
+            return true;
+        }
+
+        return false;
+    }
+
+    private void UpdateTerrain(int id)
+    {
+        //从键值对中找出地块的相应层级
+    }
+
     #endregion
 
     public GameObject CreateCube(Vector3 size, Vector3 pos)
@@ -262,5 +345,21 @@ public class TerrainLodSystem : MonoBehaviour
         GameObject obj = Terrain.CreateTerrainGameObject(terrainData);
         obj.transform.position = pos;
         return obj;
+    }
+
+    public GameObject lastObj;
+    public void SwitchColor(GameObject obj)
+    {
+        if (lastObj == null)
+        {
+            lastObj = obj;
+        }
+
+        if (!lastObj.name.Equals(obj))
+        {
+            lastObj.GetComponent<Renderer>().material.color = Color.white;
+            obj.GetComponent<Renderer>().material.color = Color.red;
+            lastObj = obj;
+        }
     }
 }
